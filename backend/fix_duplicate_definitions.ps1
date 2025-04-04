@@ -1,95 +1,110 @@
-# Скрипт для исправления повторяющихся определений в проекте
+# Скрипт для исправления дублирующихся определений
 
-# Параметры
+# Устанавливаем параметры
 $backendDir = "C:\kalin\moshosp\backend"
 
-# Функция для вывода информации
+# Функция для вывода шагов
 function Write-Step {
     param (
-        [string] $Message
+        [string]$Message
     )
-    Write-Host ""
-    Write-Host "===== $Message =====" -ForegroundColor Cyan
+    Write-Host "`n>> $Message" -ForegroundColor Cyan
 }
 
 # Предупреждение
-Write-Step "Исправление повторяющихся определений"
-Write-Host "Этот скрипт исправит конфликты с дублирующимися определениями в проекте." -ForegroundColor Yellow
-Write-Host "ВНИМАНИЕ: Рекомендуется сделать резервную копию проекта перед запуском!" -ForegroundColor Red
-Write-Host "Продолжить? (y/n)" -ForegroundColor Yellow
-$confirm = Read-Host
+Write-Host "ВНИМАНИЕ: Этот скрипт исправит дублирующиеся определения в проекте." -ForegroundColor Yellow
+Write-Host "Рекомендуется создать резервную копию проекта перед продолжением." -ForegroundColor Yellow
 
-if ($confirm -ne "y") {
-    Write-Host "Операция отменена" -ForegroundColor Red
+$confirmation = Read-Host "Хотите продолжить? (y/n)"
+if ($confirmation -ne 'y') {
+    Write-Host "Операция отменена." -ForegroundColor Red
     exit
 }
 
-# 1. Исправление конфликта между models\requestdto.go и models\game.go
-Write-Step "Исправление конфликта в models"
+# Исправляем конфликт между models\requestdto.go и models\game.go
+Write-Step "Исправление дублирования в моделях"
 
-$requestdtoPath = "$backendDir\internal\domain\models\requestdto.go"
+$requestdtoPath = Join-Path -Path $backendDir -ChildPath "internal\domain\models\requestdto.go"
 if (Test-Path $requestdtoPath) {
-    # Переименовываем файл, добавляя .bak
-    Rename-Item -Path $requestdtoPath -NewName "requestdto.go.bak" -Force
-    Write-Host "Переименован файл: $requestdtoPath -> requestdto.go.bak" -ForegroundColor Green
-}
-
-# 2. Исправление конфликта между database\repository.go и database\queries.go
-Write-Step "Исправление конфликта в database"
-
-$repositoryPath = "$backendDir\internal\database\repository.go" 
-if (Test-Path $repositoryPath) {
-    # Переименовываем файл, добавляя .bak
-    Rename-Item -Path $repositoryPath -NewName "repository.go.bak" -Force
-    Write-Host "Переименован файл: $repositoryPath -> repository.go.bak" -ForegroundColor Green
-}
-
-Write-Step "Создание новых файлов"
-
-# Создаем новый requestdto.go без конфликтующих определений
-$newRequestdtoContent = @"
+    # Создаем новый файл без дублирующихся определений
+    $content = @'
 package models
 
-// Здесь только определения, которые не конфликтуют с другими файлами
-// AddExperienceInput и UnlockAchievementInput перемещены в game.go
-
-// PaginatedRequest представляет запрос с пагинацией
-type PaginatedRequest struct {
-    Page  int `json:"page" form:"page"`
-    Limit int `json:"limit" form:"limit"`
+// RefreshTokenInput представляет запрос на обновление токена
+type RefreshTokenInput struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
-// Определите другие нужные структуры, не перекрывающиеся с game.go
-"@
+// MarkNotificationReadInput представляет запрос на пометку уведомления как прочитанного
+type MarkNotificationReadInput struct {
+	NotificationID string `json:"notification_id" validate:"required"`
+}
 
-$newRequestdtoPath = "$backendDir\internal\domain\models\requestdto.go"
-Set-Content -Path $newRequestdtoPath -Value $newRequestdtoContent -NoNewline
-Write-Host "Создан файл: $newRequestdtoPath" -ForegroundColor Green
+// RegisterDeviceInput представляет запрос на регистрацию устройства для пуш-уведомлений
+type RegisterDeviceInput struct {
+	DeviceToken string `json:"device_token" validate:"required"`
+	DeviceType  string `json:"device_type" validate:"required,oneof=ios android web"`
+}
 
-# Создаем новый repository.go в database без конфликтующих определений
-$newRepositoryContent = @"
+// ErrorResponse представляет стандартный формат ответа с ошибкой
+type ErrorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message,omitempty"`
+	Code    int    `json:"code,omitempty"`
+}
+
+// StatusResponse представляет стандартный формат ответа со статусом
+type StatusResponse struct {
+	Status  string      `json:"status"`
+	Message string      `json:"message,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
+}
+'@
+    
+    # Сохраняем результат
+    Set-Content -Path $requestdtoPath -Value $content
+    Write-Host "Файл обновлен: $requestdtoPath" -ForegroundColor Green
+}
+
+# Исправляем конфликт с Repository
+$repositoryPath = Join-Path -Path $backendDir -ChildPath "internal\database\repository.go"
+if (Test-Path $repositoryPath) {
+    # Создаем пустой файл repository.go
+    $content = @'
+// This file is intentionally left empty
+// All definitions have been moved to queries.go
+
 package database
+'@
+    Set-Content -Path $repositoryPath -Value $content
+    Write-Host "Обновлен файл: $repositoryPath" -ForegroundColor Green
+}
 
-// Здесь только определения, которые не конфликтуют с queries.go
-// Repository и NewRepository перемещены в queries.go
+# Исправляем путь импорта в main.go
+Write-Step "Обновление импортов в main.go"
 
-// Определите другие функции и типы, которые не перекрываются с queries.go
-"@
+$mainPath = Join-Path -Path $backendDir -ChildPath "cmd\api\main.go"
+if (Test-Path $mainPath) {
+    $content = Get-Content -Path $mainPath -Raw
+    $updatedContent = $content -replace "moshosp/backend", "github.com/kal9mov/moshosp/backend"
+    Set-Content -Path $mainPath -Value $updatedContent
+    Write-Host "Обновлен файл: $mainPath" -ForegroundColor Green
+}
 
-$newRepositoryPath = "$backendDir\internal\database\repository.go"
-Set-Content -Path $newRepositoryPath -Value $newRepositoryContent -NoNewline
-Write-Host "Создан файл: $newRepositoryPath" -ForegroundColor Green
+# Запускаем go mod tidy для исправления зависимостей
+Write-Step "Запуск go mod tidy"
+Set-Location -Path $backendDir
+& go mod tidy
 
-# Инструкции для завершения процесса
-Write-Step "Следующие шаги"
-Write-Host "1. Если вы используете систему контроля версий (git):" -ForegroundColor Yellow
-Write-Host "   git add ."
-Write-Host "   git commit -m ""Fix duplicate definitions"""
-Write-Host ""
-Write-Host "2. Соберите проект:"
-Write-Host "   cd $backendDir\cmd\api"
-Write-Host "   go build"
-Write-Host ""
-Write-Host "3. Если остаются ошибки компиляции, проверьте .bak файлы и перенесите оттуда уникальные определения."
-Write-Host ""
-Write-Host "Готово!" -ForegroundColor Green 
+# Завершение
+Write-Step "Готово!"
+Write-Host "Дублирующиеся определения исправлены." -ForegroundColor Green
+Write-Host "`nСледующие шаги:" -ForegroundColor Yellow
+Write-Host "1. Зафиксируйте изменения в Git:" -ForegroundColor Yellow
+Write-Host "   cd C:\kalin\moshosp" -ForegroundColor Yellow
+Write-Host "   git add ." -ForegroundColor Yellow
+Write-Host "   git commit -m 'Fix duplicate definitions'" -ForegroundColor Yellow
+Write-Host "   git push" -ForegroundColor Yellow
+Write-Host "`n2. Соберите проект:" -ForegroundColor Yellow
+Write-Host "   cd C:\kalin\moshosp\backend\cmd\api" -ForegroundColor Yellow
+Write-Host "   go build" -ForegroundColor Yellow 

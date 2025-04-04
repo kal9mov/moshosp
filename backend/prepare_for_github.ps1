@@ -2,101 +2,90 @@
 # Решает проблемы с импортами и повторяющимися определениями
 
 # Параметры
-$projectRoot = "C:\kalin\moshosp"
-$backendDir = "$projectRoot\backend"
-$oldImportPrefix = "moshosp/backend"
-$newImportPrefix = "github.com/kalin/moshosp/backend"
+param (
+    [string]$projectRoot = "C:\kalin\moshosp",
+    [string]$backendDir = "C:\kalin\moshosp\backend",
+    [string]$oldImportPrefix = "moshosp/backend",
+    [string]$newImportPrefix = "github.com/kal9mov/moshosp/backend"
+)
 
 # Функция для вывода информации
 function Write-Step {
     param (
-        [string] $Message
+        [string]$Message
     )
-    Write-Host ""
-    Write-Host "===== $Message =====" -ForegroundColor Cyan
+    Write-Host "`n>> $Message" -ForegroundColor Cyan
 }
 
 # Предупреждение
-Write-Step "Подготовка проекта для GitHub"
-Write-Host "Этот скрипт исправит импорты и подготовит проект для публикации на GitHub." -ForegroundColor Yellow
-Write-Host "Все импорты '$oldImportPrefix' будут заменены на '$newImportPrefix'" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "ВНИМАНИЕ: Рекомендуется сделать резервную копию проекта перед запуском!" -ForegroundColor Red
-Write-Host "Продолжить? (y/n)" -ForegroundColor Yellow
-$confirm = Read-Host
+Write-Host "ВНИМАНИЕ: Этот скрипт подготовит проект для публикации на GitHub." -ForegroundColor Yellow
+Write-Host "Рекомендуется создать резервную копию проекта перед продолжением." -ForegroundColor Yellow
+Write-Host "Будут изменены пути импорта и файлы go.mod." -ForegroundColor Yellow
 
-if ($confirm -ne "y") {
-    Write-Host "Операция отменена" -ForegroundColor Red
+$confirmation = Read-Host "Хотите продолжить? (y/n)"
+if ($confirmation -ne 'y') {
+    Write-Host "Операция отменена." -ForegroundColor Red
     exit
 }
 
-# 1. Обновление go.mod файлов
-Write-Step "Обновление go.mod файлов"
-
-# Обновление go.mod в корне проекта
-$rootGoModPath = "$projectRoot\go.mod"
+# Шаг 1: Обновление go.mod в корне проекта
+Write-Step "Обновление go.mod в корне проекта"
+$rootGoModPath = Join-Path -Path $projectRoot -ChildPath "go.mod"
 if (Test-Path $rootGoModPath) {
-    $rootGoModContent = Get-Content $rootGoModPath -Raw
-    $rootGoModContent = $rootGoModContent -replace "module\s+\S+", "module github.com/kalin/moshosp"
-    Set-Content -Path $rootGoModPath -Value $rootGoModContent -NoNewline
+    $content = Get-Content -Path $rootGoModPath -Raw
+    $newContent = $content -replace "module\s+\S+", "module github.com/kal9mov/moshosp"
+    Set-Content -Path $rootGoModPath -Value $newContent
     Write-Host "Обновлен файл: $rootGoModPath" -ForegroundColor Green
 }
 
-# Обновление go.mod в backend
-$backendGoModPath = "$backendDir\go.mod"
+# Шаг 2: Обновление go.mod в директории backend
+Write-Step "Обновление go.mod в директории backend"
+$backendGoModPath = Join-Path -Path $backendDir -ChildPath "go.mod"
 if (Test-Path $backendGoModPath) {
-    $backendGoModContent = Get-Content $backendGoModPath -Raw
-    $backendGoModContent = $backendGoModContent -replace "module\s+\S+", "module github.com/kalin/moshosp/backend"
-    Set-Content -Path $backendGoModPath -Value $backendGoModContent -NoNewline
+    $content = Get-Content -Path $backendGoModPath -Raw
+    $newContent = $content -replace "module\s+\S+", "module github.com/kal9mov/moshosp/backend"
+    Set-Content -Path $backendGoModPath -Value $newContent
     Write-Host "Обновлен файл: $backendGoModPath" -ForegroundColor Green
 }
 
-# 2. Замена импортов во всех .go файлах
-Write-Step "Замена импортов в Go файлах"
-
-$goFiles = Get-ChildItem -Path $projectRoot -Filter "*.go" -Recurse
-$replacedFileCount = 0
+# Шаг 3: Замена путей импорта во всех .go файлах
+Write-Step "Замена путей импорта во всех .go файлах"
+$goFiles = Get-ChildItem -Path $backendDir -Filter "*.go" -Recurse
+$updatedFiles = 0
 
 foreach ($file in $goFiles) {
     $content = Get-Content -Path $file.FullName -Raw
-    
     if ($content -match $oldImportPrefix) {
-        $newContent = $content -replace "import\s+\(\s+", "import (`n" -replace """$oldImportPrefix", """$newImportPrefix"
-        Set-Content -Path $file.FullName -Value $newContent -NoNewline
-        $replacedFileCount++
+        $newContent = $content -replace $oldImportPrefix, $newImportPrefix
+        Set-Content -Path $file.FullName -Value $newContent
+        $updatedFiles++
         Write-Host "Обновлен файл: $($file.FullName)" -ForegroundColor Green
     }
 }
 
-Write-Host "Всего обновлено файлов: $replacedFileCount" -ForegroundColor Green
+Write-Host "Всего обновлено файлов: $updatedFiles" -ForegroundColor Green
 
-# 3. Исправление повторяющихся определений
-Write-Step "Исправление повторяющихся определений"
+# Шаг 4: Запуск go mod tidy для исправления зависимостей
+Write-Step "Запуск go mod tidy для исправления зависимостей"
+Set-Location -Path $backendDir
+$result = & go mod tidy
+Write-Host $result
 
-# Выполнение go mod tidy
-Set-Location $backendDir
-Write-Host "Выполнение 'go mod tidy'..." -ForegroundColor Yellow
-Invoke-Expression "go mod tidy"
-
-# Инструкции для завершения процесса
-Write-Step "Следующие шаги"
-Write-Host "1. Проверьте файлы с повторяющимися определениями и исправьте их вручную:" -ForegroundColor Yellow
-Write-Host "   - models\requestdto.go и models\game.go (AddExperienceInput, UnlockAchievementInput)"
-Write-Host "   - models\responsedto.go и models\requestdto.go (PaginatedResponse)"
-Write-Host "   - database\repository.go и database\queries.go (Repository, NewRepository)"
-Write-Host ""
-Write-Host "2. Создайте репозиторий на GitHub:"
-Write-Host "   - Репозиторий: github.com/kalin/moshosp"
-Write-Host ""
-Write-Host "3. Опубликуйте код:"
-Write-Host "   git init"
-Write-Host "   git add ."
-Write-Host "   git commit -m ""Initial commit"""
-Write-Host "   git remote add origin https://github.com/kalin/moshosp.git"
-Write-Host "   git push -u origin master"
-Write-Host ""
-Write-Host "4. Соберите проект:"
-Write-Host "   cd backend/cmd/api"
-Write-Host "   go build"
-Write-Host ""
-Write-Host "Готово!" -ForegroundColor Green 
+# Завершение
+Write-Step "Подготовка проекта завершена"
+Write-Host "Проверьте следующие файлы на наличие дублирующихся определений:" -ForegroundColor Yellow
+Write-Host " - models\requestdto.go и models\game.go (AddExperienceInput, UnlockAchievementInput и т.д.)" -ForegroundColor Yellow
+Write-Host " - models\responsedto.go" -ForegroundColor Yellow
+Write-Host " - database\repository.go и database\queries.go (Repository, NewRepository и т.д.)" -ForegroundColor Yellow
+Write-Host "`nЗатем:" -ForegroundColor Green
+Write-Host "1. Создайте репозиторий на GitHub с именем 'moshosp'" -ForegroundColor Green
+Write-Host "2. Инициализируйте Git репозиторий и отправьте код:" -ForegroundColor Green
+Write-Host "cd $projectRoot" -ForegroundColor Green
+Write-Host "git init" -ForegroundColor Green
+Write-Host "git add ." -ForegroundColor Green
+Write-Host "git commit -m 'Initial commit'" -ForegroundColor Green
+Write-Host "git remote add origin https://github.com/kal9mov/moshosp.git" -ForegroundColor Green
+Write-Host "git push -u origin master" -ForegroundColor Green
+Write-Host "`n3. Соберите проект:" -ForegroundColor Green
+Write-Host "cd $backendDir\cmd\api" -ForegroundColor Green
+Write-Host "go build" -ForegroundColor Green 
