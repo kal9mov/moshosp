@@ -1,0 +1,224 @@
+package middleware
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/jmoiron/sqlx"
+
+	"github.com/kalin/moshosp/backend/config"
+	"github.com/kalin/moshosp/backend/internal/database"
+)
+
+// Ключи для контекста
+type contextKey string
+
+const (
+	userContextKey contextKey = "user"
+	UserIDKey      contextKey = "user_id" // Ключ для ID пользователя в контексте
+)
+
+// Claims представляет данные JWT токена
+type Claims struct {
+	UserID int64 `json:"user_id"`
+	jwt.StandardClaims
+}
+
+// Вспомогательные функции для получения конфигурации
+func getJWTSecret() string {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		return "default-secret-key-change-in-production"
+	}
+	return secret
+}
+
+func getJWTExpiration() time.Duration {
+	expStr := os.Getenv("JWT_EXPIRATION")
+	if expStr == "" {
+		return 24 * time.Hour // По умолчанию 24 часа
+	}
+
+	duration, err := time.ParseDuration(expStr)
+	if err != nil {
+		return 24 * time.Hour
+	}
+
+	return duration
+}
+
+// JWTAuth middleware для JWT аутентификации
+func JWTAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Извлекаем токен из заголовка
+		tokenString := extractToken(r)
+		if tokenString == "" {
+			http.Error(w, "Не авторизован", http.StatusUnauthorized)
+			return
+		}
+
+		// Верифицируем токен
+		claims, err := validateToken(tokenString, getJWTSecret())
+		if err != nil {
+			http.Error(w, "Недействительный токен: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		// Добавляем ID пользователя в контекст
+		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// AdminOnly middleware для проверки прав администратора
+func AdminOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Проверяем, что пользователь является администратором
+		// Реализация зависит от того, как хранятся роли пользователей
+		http.Error(w, "Недостаточно прав", http.StatusForbidden)
+		return
+	})
+}
+
+// CreateToken создает JWT токен для пользователя
+func CreateToken(userID int64) (string, error) {
+	// Создаем новый токен с указанными claims
+	claims := &Claims{
+		UserID: userID,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(getJWTExpiration()).Unix(),
+			IssuedAt:  time.Now().Unix(),
+		},
+	}
+
+	// Создаем токен с подписью HMAC SHA256
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	// Подписываем токен с секретным ключом
+	tokenString, err := token.SignedString([]byte(getJWTSecret()))
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
+// AuthMiddleware проверяет наличие и валидность JWT токена
+func AuthMiddleware(db *sqlx.DB, cfg *config.Config) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Получаем токен из заголовка Authorization
+			tokenString := extractToken(r)
+			if tokenString == "" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			// Проверяем токен
+			claims, err := validateToken(tokenString, cfg.Auth.JWTSecret)
+			if err != nil {
+				http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			// Получаем пользователя из БД по ID из токена
+			repo := database.NewRepository(db)
+			user, err := repo.GetUserByID(claims.UserID)
+			if err != nil {
+				http.Error(w, "Error getting user: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if user == nil {
+				http.Error(w, "User not found", http.StatusUnauthorized)
+				return
+			}
+
+			// Добавляем пользователя в контекст запроса
+			ctx := context.WithValue(r.Context(), userContextKey, user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// OptionalAuthMiddleware проверяет токен, но не требует его наличия
+func OptionalAuthMiddleware(db *sqlx.DB, cfg *config.Config) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Получаем токен из заголовка Authorization
+			tokenString := extractToken(r)
+			if tokenString != "" {
+				// Проверяем токен
+				claims, err := validateToken(tokenString, cfg.Auth.JWTSecret)
+				if err == nil {
+					// Получаем пользователя из БД по ID из токена
+					repo := database.NewRepository(db)
+					user, err := repo.GetUserByID(claims.UserID)
+					if err == nil && user != nil {
+						// Добавляем пользователя в контекст запроса
+						ctx := context.WithValue(r.Context(), userContextKey, user)
+						next.ServeHTTP(w, r.WithContext(ctx))
+						return
+					}
+				}
+			}
+
+			// Если токен отсутствует или невалиден, продолжаем без пользователя в контексте
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// VolunteerOrAdmin middleware для проверки наличия роли волонтера или админа
+func VolunteerOrAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := GetUserFromContext(r.Context())
+		if !ok || (user.Role != "volunteer" && user.Role != "admin") {
+			http.Error(w, "Permission denied", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// GetUserFromContext извлекает пользователя из контекста запроса
+func GetUserFromContext(ctx context.Context) (*database.User, bool) {
+	user, ok := ctx.Value(userContextKey).(*database.User)
+	return user, ok
+}
+
+// validateToken проверяет и валидирует JWT токен
+func validateToken(tokenString string, secretKey string) (*Claims, error) {
+	// Парсим JWT токен
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// Проверка метода подписи
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("неожиданный метод подписи")
+		}
+		return []byte(secretKey), nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Извлекаем claims из токена
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, errors.New("недействительный токен")
+}
+
+// extractToken извлекает токен из заголовка Authorization
+func extractToken(r *http.Request) string {
+	bearerToken := r.Header.Get("Authorization")
+	if len(bearerToken) > 7 && strings.HasPrefix(bearerToken, "Bearer ") {
+		return bearerToken[7:]
+	}
+	return ""
+}

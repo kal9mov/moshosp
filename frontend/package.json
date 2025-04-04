@@ -1,0 +1,53 @@
+{
+  "name": "moshosp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.3",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.15.11",
+    "@mui/lab": "^7.0.0-beta.10",
+    "@mui/material": "^5.15.11",
+    "@types/uuid": "^10.0.0",
+    "ajv": "^8.12.0",
+    "axios": "^1.6.7",
+    "date-fns": "^2.30.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-qr-code": "^2.0.12",
+    "react-router-dom": "^6.30.0",
+    "react-toastify": "^10.0.4",
+    "telegram-login-button": "^0.1.0",
+    "uuid": "^9.0.1",
+    "web-vitals": "^3.5.2",
+    "zustand": "^4.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.13",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "eslint": "^8.56.0",
+    "eslint-config-react-app": "^7.0.1",
+    "react-scripts": "5.0.1",
+    "typescript": "^5.3.3"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
