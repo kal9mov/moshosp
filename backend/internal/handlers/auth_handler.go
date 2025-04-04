@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"moshosp/backend/internal/database"
-	"moshosp/backend/internal/middleware"
+	"github.com/kal9mov/moshosp/backend/internal/database"
+	"github.com/kal9mov/moshosp/backend/internal/middleware"
 )
 
 // TelegramAuth представляет данные, полученные от Telegram Login Widget

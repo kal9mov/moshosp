@@ -6,10 +6,10 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"moshosp/backend/internal/domain/models"
-	"moshosp/backend/internal/middleware"
-	"moshosp/backend/internal/services"
-	"moshosp/backend/internal/utils"
+	"github.com/kal9mov/moshosp/backend/internal/domain/models"
+	"github.com/kal9mov/moshosp/backend/internal/middleware"
+	"github.com/kal9mov/moshosp/backend/internal/services"
+	"github.com/kal9mov/moshosp/backend/internal/utils"
 )
 
 // GameHandler содержит обработчики для игровых функций

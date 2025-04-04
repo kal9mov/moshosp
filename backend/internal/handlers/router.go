@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	authMiddleware "moshosp/backend/internal/middleware"
+	authMiddleware "github.com/kal9mov/moshosp/backend/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -17,13 +17,13 @@ func SetupRouter(
 	requestHandler *RequestHandler,
 ) *chi.Mux {
 	r := chi.NewRouter()
-	
+
 	// Middleware
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	
+
 	// Настройка CORS
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -33,16 +33,16 @@ func SetupRouter(
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
-	
+
 	// Базовый маршрут для проверки работоспособности
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("MosHosp API"))
 	})
-	
+
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("OK"))
 	})
-	
+
 	// Публичные маршруты
 	r.Group(func(r chi.Router) {
 		// Аутентификация
@@ -51,17 +51,17 @@ func SetupRouter(
 			r.Post("/telegram", userHandler.TelegramAuth)
 			r.Post("/refresh", userHandler.RefreshToken)
 		})
-		
+
 		// Публичная статистика
 		r.Get("/api/stats", requestHandler.GetRequestStats)
 		r.Get("/api/requests/categories", requestHandler.GetRequestCategories)
 	})
-	
+
 	// Защищенные маршруты (требуют авторизации)
 	r.Group(func(r chi.Router) {
 		// Проверка JWT-токена
 		r.Use(authMiddleware.JWTAuth)
-		
+
 		// Профиль пользователя
 		r.Route("/api/users", func(r chi.Router) {
 			r.Get("/me", userHandler.GetCurrentUser)
@@ -70,13 +70,13 @@ func SetupRouter(
 			r.Get("/me/achievements", gameHandler.GetUserAchievements)
 			r.Get("/leaderboard", gameHandler.GetLeaderboard)
 		})
-		
+
 		// Заявки
 		RegisterRequestRoutes(r, requestHandler)
-		
+
 		// Игровые функции
 		RegisterGameRoutes(r, gameHandler)
 	})
-	
+
 	return r
-} 
+}

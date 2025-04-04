@@ -42,11 +42,17 @@ type Achievement struct {
 
 // UserAchievement связывает пользователя с достижением
 type UserAchievement struct {
-	ID            int       `json:"id" db:"id"`
-	UserID        int       `json:"user_id" db:"user_id"`
-	AchievementID string    `json:"achievement_id" db:"achievement_id"`
-	UnlockedAt    time.Time `json:"unlocked_at" db:"unlocked_at"`
-	IsNew         bool      `json:"is_new" db:"is_new"`
+	ID            int        `json:"id" db:"id"`
+	UserID        int        `json:"user_id" db:"user_id"`
+	AchievementID string     `json:"achievement_id" db:"achievement_id"`
+	UnlockedAt    time.Time  `json:"unlocked_at" db:"unlocked_at"`
+	IsNew         bool       `json:"is_new" db:"is_new"`
+	IsUnlocked    bool       `json:"is_unlocked" db:"is_unlocked"`
+	Progress      int        `json:"progress" db:"progress"`
+	MaxProgress   int        `json:"max_progress" db:"max_progress"`
+	UnlockDate    *time.Time `json:"unlock_date" db:"unlock_date"`
+	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // UserAchievementInfo представляет полную информацию о достижении пользователя

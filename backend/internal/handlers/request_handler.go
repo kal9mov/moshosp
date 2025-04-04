@@ -6,14 +6,14 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"moshosp/backend/internal/middleware"
+	"github.com/kal9mov/moshosp/backend/internal/middleware"
 	"github.com/sirupsen/logrus"
 
-	"moshosp/backend/internal/domain/models"
-	"moshosp/backend/internal/repository"
-	"moshosp/backend/internal/services"
-	"moshosp/backend/internal/utils"
-	"moshosp/backend/internal/database"
+	"github.com/kal9mov/moshosp/backend/internal/database"
+	"github.com/kal9mov/moshosp/backend/internal/domain/models"
+	"github.com/kal9mov/moshosp/backend/internal/repository"
+	"github.com/kal9mov/moshosp/backend/internal/services"
+	"github.com/kal9mov/moshosp/backend/internal/utils"
 )
 
 // RequestHandler обрабатывает запросы связанные с заявками на помощь

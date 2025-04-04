@@ -4,9 +4,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/sirupsen/logrus"
 
-	"moshosp/backend/internal/middleware"
-	"moshosp/backend/internal/repository"
-	"moshosp/backend/internal/services"
+	"github.com/kal9mov/moshosp/backend/internal/middleware"
+	"github.com/kal9mov/moshosp/backend/internal/repository"
+	"github.com/kal9mov/moshosp/backend/internal/services"
 )
 
 // SetupRequestRoutes настраивает маршруты API для работы с запросами

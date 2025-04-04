@@ -200,7 +200,7 @@ func (r *GameRepository) UnlockAchievement(ctx context.Context, userID int, achi
 	// Проверяем наличие записи о достижении
 	var existing models.UserAchievement
 	existQuery := `
-		SELECT id, user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date, created_at, updated_at
+		SELECT id, user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date, created_at, updated_at
 		FROM user_achievements
 		WHERE user_id = $1 AND achievement_id = $2
 	`
@@ -211,7 +211,7 @@ func (r *GameRepository) UnlockAchievement(ctx context.Context, userID int, achi
 	}
 
 	// Если запись уже существует и разблокирована, просто возвращаем ее
-	if err == nil && existing.Unlocked {
+	if err == nil && existing.IsUnlocked {
 		return &existing, nil
 	}
 
@@ -221,9 +221,9 @@ func (r *GameRepository) UnlockAchievement(ctx context.Context, userID int, achi
 	if errors.Is(err, sql.ErrNoRows) {
 		// Создаем новую запись
 		insertQuery := `
-			INSERT INTO user_achievements (user_id, achievement_id, unlocked, unlock_date)
+			INSERT INTO user_achievements (user_id, achievement_id, is_unlocked, unlock_date)
 			VALUES ($1, $2, true, $3)
-			RETURNING id, user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date, created_at, updated_at
+			RETURNING id, user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date, created_at, updated_at
 		`
 
 		var userAchievement models.UserAchievement
@@ -240,9 +240,9 @@ func (r *GameRepository) UnlockAchievement(ctx context.Context, userID int, achi
 		// Обновляем существующую запись
 		updateQuery := `
 			UPDATE user_achievements
-			SET unlocked = true, unlock_date = $3, updated_at = NOW()
+			SET is_unlocked = true, unlock_date = $3, updated_at = NOW()
 			WHERE user_id = $1 AND achievement_id = $2
-			RETURNING id, user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date, created_at, updated_at
+			RETURNING id, user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date, created_at, updated_at
 		`
 
 		var userAchievement models.UserAchievement
@@ -263,7 +263,7 @@ func (r *GameRepository) UpdateAchievementProgress(ctx context.Context, userID i
 	// Получаем информацию о достижении для определения общего прогресса
 	var achievement models.Achievement
 	achievementQuery := `
-		SELECT id, title, description, icon, icon_src, category, rarity_level, points_reward, created_at, updated_at
+		SELECT id, title, description, icon, icon_src, category, rarity_level, exp_reward, created_at, updated_at
 		FROM achievements
 		WHERE id = $1
 	`
@@ -279,7 +279,7 @@ func (r *GameRepository) UpdateAchievementProgress(ctx context.Context, userID i
 	// Проверяем наличие записи о прогрессе
 	var existing models.UserAchievement
 	existQuery := `
-		SELECT id, user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date, created_at, updated_at
+		SELECT id, user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date, created_at, updated_at
 		FROM user_achievements
 		WHERE user_id = $1 AND achievement_id = $2
 	`
@@ -291,7 +291,7 @@ func (r *GameRepository) UpdateAchievementProgress(ctx context.Context, userID i
 	totalProgress := 100 // Значение по умолчанию
 
 	// Если запись уже разблокирована, просто возвращаем ее
-	if err == nil && existing.Unlocked {
+	if err == nil && existing.IsUnlocked {
 		return &existing, false, nil
 	}
 
@@ -304,9 +304,9 @@ func (r *GameRepository) UpdateAchievementProgress(ctx context.Context, userID i
 		if progress >= totalProgress {
 			now := time.Now()
 			insertQuery := `
-				INSERT INTO user_achievements (user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date)
+				INSERT INTO user_achievements (user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date)
 				VALUES ($1, $2, true, $3, $4, $5)
-				RETURNING id, user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date, created_at, updated_at
+				RETURNING id, user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date, created_at, updated_at
 			`
 
 			err = r.db.GetContext(ctx, &userAchievement, insertQuery, userID, achievementID, progress, totalProgress, now)
@@ -320,9 +320,9 @@ func (r *GameRepository) UpdateAchievementProgress(ctx context.Context, userID i
 			return &userAchievement, true, nil
 		} else {
 			insertQuery := `
-				INSERT INTO user_achievements (user_id, achievement_id, unlocked, progress_current, progress_total)
+				INSERT INTO user_achievements (user_id, achievement_id, is_unlocked, progress, max_progress)
 				VALUES ($1, $2, false, $3, $4)
-				RETURNING id, user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date, created_at, updated_at
+				RETURNING id, user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date, created_at, updated_at
 			`
 
 			err = r.db.GetContext(ctx, &userAchievement, insertQuery, userID, achievementID, progress, totalProgress)
@@ -335,17 +335,17 @@ func (r *GameRepository) UpdateAchievementProgress(ctx context.Context, userID i
 	} else if err == nil {
 		// Обновляем прогресс и проверяем разблокировку
 		currentProgress := progress
-		if existing.ProgressCurrent != nil && *existing.ProgressCurrent > progress {
-			currentProgress = *existing.ProgressCurrent
+		if existing.Progress > progress {
+			currentProgress = existing.Progress
 		}
 
-		if currentProgress >= totalProgress && !existing.Unlocked {
+		if currentProgress >= totalProgress && !existing.IsUnlocked {
 			now := time.Now()
 			updateQuery := `
 				UPDATE user_achievements
-				SET unlocked = true, progress_current = $3, progress_total = $4, unlock_date = $5, updated_at = NOW()
+				SET is_unlocked = true, progress = $3, max_progress = $4, unlock_date = $5, updated_at = NOW()
 				WHERE user_id = $1 AND achievement_id = $2
-				RETURNING id, user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date, created_at, updated_at
+				RETURNING id, user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date, created_at, updated_at
 			`
 
 			err = r.db.GetContext(ctx, &userAchievement, updateQuery, userID, achievementID, currentProgress, totalProgress, now)
@@ -360,9 +360,9 @@ func (r *GameRepository) UpdateAchievementProgress(ctx context.Context, userID i
 		} else {
 			updateQuery := `
 				UPDATE user_achievements
-				SET progress_current = $3, progress_total = $4, updated_at = NOW()
+				SET progress = $3, max_progress = $4, updated_at = NOW()
 				WHERE user_id = $1 AND achievement_id = $2
-				RETURNING id, user_id, achievement_id, unlocked, progress_current, progress_total, unlock_date, created_at, updated_at
+				RETURNING id, user_id, achievement_id, is_unlocked, progress, max_progress, unlock_date, created_at, updated_at
 			`
 
 			err = r.db.GetContext(ctx, &userAchievement, updateQuery, userID, achievementID, currentProgress, totalProgress)
