@@ -8,8 +8,8 @@ import (
 	"math"
 	"time"
 
-	"moshosp/backend/internal/domain/models"
-	"moshosp/backend/internal/repository"
+	"github.com/kal9mov/moshosp/backend/internal/domain/models"
+	"github.com/kal9mov/moshosp/backend/internal/repository"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
@@ -153,20 +153,20 @@ func (r *GameRepository) GetUserAchievements(ctx context.Context, userID int) ([
 			a.icon_src as achievement_icon_src,
 			a.category as achievement_category,
 			a.rarity_level as achievement_rarity,
-			a.points_reward,
-			ua.unlocked,
-			ua.progress_current,
-			ua.progress_total,
+			a.exp_reward as points_reward,
+			ua.is_unlocked as unlocked,
+			ua.progress as progress_current,
+			ua.max_progress as progress_total,
 			CASE
-				WHEN ua.progress_total IS NULL OR ua.progress_total = 0 THEN 0
-				ELSE LEAST(100, (ua.progress_current * 100) / ua.progress_total)
+				WHEN ua.max_progress IS NULL OR ua.max_progress = 0 THEN 0
+				ELSE LEAST(100, (ua.progress * 100) / ua.max_progress)
 			END as progress_percentage,
 			ua.unlock_date
 		FROM user_achievements ua
 		INNER JOIN achievements a ON ua.achievement_id = a.id
 		INNER JOIN users u ON ua.user_id = u.id
 		WHERE ua.user_id = $1
-		ORDER BY ua.unlocked DESC, a.rarity_level DESC, a.title
+		ORDER BY ua.is_unlocked DESC, a.rarity_level DESC, a.title
 	`
 
 	var achievements []models.UserAchievementInfo
@@ -296,7 +296,6 @@ func (r *GameRepository) UpdateAchievementProgress(ctx context.Context, userID i
 	}
 
 	var userAchievement models.UserAchievement
-	var unlocked bool
 
 	// Обновляем или создаем запись о прогрессе
 	if errors.Is(err, sql.ErrNoRows) {
@@ -475,7 +474,7 @@ func (r *GameRepository) addExperienceForAchievement(ctx context.Context, userID
 	// Получаем информацию о достижении для определения награды опыта
 	var achievement models.Achievement
 	achievementQuery := `
-		SELECT id, title, description, icon, icon_src, category, rarity_level, points_reward, created_at, updated_at
+		SELECT id, title, description, icon, icon_src, category, rarity_level, exp_reward, created_at, updated_at
 		FROM achievements
 		WHERE id = $1
 	`
@@ -486,7 +485,7 @@ func (r *GameRepository) addExperienceForAchievement(ctx context.Context, userID
 	}
 
 	// Добавляем опыт пользователю
-	_, _, err = r.AddExperience(ctx, userID, achievement.PointsReward)
+	_, _, err = r.AddExperience(ctx, userID, achievement.ExpReward)
 	if err != nil {
 		return fmt.Errorf("failed to add experience: %w", err)
 	}
